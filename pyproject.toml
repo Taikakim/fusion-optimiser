@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fusion-optimiser"
+version = "0.1.0"
+description = "Composed PyTorch optimiser fusing Muon, NorMuon, MONA, KL-Shampoo, and Schedule-Free, with an inference-time conditioning cache for adaLN-zero models."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "CC0-1.0" }
+keywords = ["pytorch", "optimizer", "muon", "schedule-free", "diffusion", "dit"]
+authors = [{ name = "Taikakim" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+]
+
+[project.urls]
+Homepage = "https://github.com/Taikakim/fusion-optimiser"
+Issues = "https://github.com/Taikakim/fusion-optimiser/issues"
+
+[tool.setuptools.packages.find]
+include = ["fusion_optimiser*"]
+exclude = ["tests*", "examples*", "docs*"]

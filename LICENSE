@@ -1,0 +1,30 @@
+FusionOpt — Public Domain Dedication
+=====================================
+
+To the extent possible under law, the authors of FusionOpt have dedicated
+all copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any warranty.
+
+This dedication is made under the Creative Commons CC0 1.0 Universal
+Public Domain Dedication. The full legal text is available at:
+
+    https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+You can copy, modify, distribute and use the software, including for
+commercial purposes, all without asking permission.
+
+
+On the underlying research
+--------------------------
+
+FusionOpt is an original implementation that composes algorithms described
+in several research papers (Muon, NorMuon, MONA, KL-Shampoo, Schedule-Free,
+ScheduleFree+, SF-NorMuon — see docs/references.md). Algorithms described
+in academic papers are not themselves subject to copyright; only the
+specific text and code expressing them are. The code in this repository
+is an independent reimplementation written from the papers' descriptions
+and is dedicated to the public domain as described above.
+
+If you build on this work, citing the underlying papers is good academic
+practice but is not required by this license. Citing this repository is
+likewise appreciated but not required.
