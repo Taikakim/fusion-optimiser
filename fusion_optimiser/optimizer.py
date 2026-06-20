@@ -432,20 +432,27 @@ class FusionOpt(Optimizer):
                 continue
 
             state = self.state[p]
-            if "z" not in state:
-                # Lazy init: copy current p as both z and x (eval point matches).
-                state["z"] = p.detach().clone().float()
-                state["x"] = p.detach().clone().float()
-                state["m"] = torch.zeros_like(grad)           # momentum
-                state["A"] = torch.zeros_like(grad)           # MONA curvature EMA
-                state["g_prev"] = torch.zeros_like(grad)      # last gradient
-                out_dim, in_dim = grad.shape
-                state["L"] = torch.zeros(out_dim, out_dim, device=grad.device, dtype=torch.float32)
-                state["R"] = torch.zeros(in_dim, in_dim, device=grad.device, dtype=torch.float32)
-                state["P_L"] = torch.eye(out_dim, device=grad.device, dtype=torch.float32)
-                state["P_R"] = torch.eye(in_dim, device=grad.device, dtype=torch.float32)
-                state["r"] = torch.zeros(out_dim, device=grad.device, dtype=torch.float32)
+            if "step" not in state:
+                # Lazy init — allocate ONLY the buffers the active components use. The modular
+                # compute path already gates every op by component; gating the allocation to match
+                # means e.g. SF-NorMuon (no shampoo) no longer carries the (in_dim x in_dim) Shampoo
+                # matrices, which dominate memory on large adapters. Sentinel is "step" (always set).
                 state["step"] = 0
+                state["m"] = torch.zeros_like(grad)           # momentum (spectral/muon path, always)
+                if "sf" in self._components:
+                    state["z"] = p.detach().clone().float()   # SF: copy p as z and x (eval==train at init)
+                    state["x"] = p.detach().clone().float()
+                if "mona" in self._components:
+                    state["A"] = torch.zeros_like(grad)       # MONA curvature EMA
+                    state["g_prev"] = torch.zeros_like(grad)  # last gradient
+                if "shampoo" in self._components:
+                    out_dim, in_dim = grad.shape
+                    state["L"] = torch.zeros(out_dim, out_dim, device=grad.device, dtype=torch.float32)
+                    state["R"] = torch.zeros(in_dim, in_dim, device=grad.device, dtype=torch.float32)
+                    state["P_L"] = torch.eye(out_dim, device=grad.device, dtype=torch.float32)
+                    state["P_R"] = torch.eye(in_dim, device=grad.device, dtype=torch.float32)
+                if "normuon" in self._components:
+                    state["r"] = torch.zeros(grad.shape[0], device=grad.device, dtype=torch.float32)
 
             # 1. KL-Shampoo factor update from RAW gradient (every step, FP32)
             if "shampoo" in self._components:

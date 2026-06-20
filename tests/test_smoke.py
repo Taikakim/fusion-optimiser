@@ -127,3 +127,33 @@ def test_force_scalar_overrides_routing():
     scalar_params = sum(p.numel() for p in groups[1]["params"])
     # fc1.weight (the 256 x 512 matrix) should now be in the scalar group.
     assert scalar_params > spectral_params, "force_scalar didn't move fc1.weight"
+
+
+def test_state_allocation_is_component_gated():
+    """Memory fix: state buffers are allocated ONLY for active components.
+
+    Before the gating fix, every spectral param eagerly allocated Shampoo's
+    (in_dim x in_dim) L/R/P_L/P_R matrices + MONA's A/g_prev regardless of which
+    components were active — multiple GB of dead state on large adapters (OOM).
+    """
+    def buffers_for(components):
+        torch.manual_seed(0)
+        model = TinyMLP(dim=256)   # >=128 so weights route to the spectral path (where gating matters)
+        opt = FusionOpt(params=build_fusion_param_groups(model), lr=1e-2, components=components)
+        if getattr(opt, "uses_sf_averaging", False):
+            opt.train()
+        x = torch.randn(8, 256)
+        (model(x) ** 2).mean().backward()
+        opt.step()
+        keys = set()
+        for st in opt.state.values():
+            keys |= {k for k, v in st.items() if torch.is_tensor(v)}
+        return keys
+
+    sfnormuon = buffers_for({"ns5", "normuon", "sf"})
+    # SF-NorMuon must NOT carry Shampoo or MONA buffers
+    assert not (sfnormuon & {"L", "R", "P_L", "P_R"}), f"Shampoo state leaked into SF-NorMuon: {sfnormuon}"
+    assert not (sfnormuon & {"A", "g_prev"}), f"MONA state leaked into SF-NorMuon: {sfnormuon}"
+    # full composition DOES allocate them
+    full = buffers_for({"mona", "shampoo", "ns5", "normuon", "sf"})
+    assert {"L", "R", "P_L", "P_R", "A", "g_prev"} <= full, f"full set missing spectral state: {full}"
