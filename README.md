@@ -86,6 +86,24 @@ All seven building blocks are published optimisers. The novelty is the
 
 Full citations in [`docs/references.md`](docs/references.md).
 
+### Stabilisers added since the first release
+
+Four mechanisms landed after the initial packaging (2026-06-20) and are now
+part of `optimizer.py`. All are **off by default** — the recipe above is
+unchanged without them.
+
+| Control | What it does | Why it exists |
+|---|---|---|
+| **`hyperball`** | Freezes each spectral matrix's Frobenius norm at ‖W₀‖_F, optimizer-side | Full-fine-tune latent-scale runaway: weights grow, the decoder is driven out of distribution, output degenerates into a spectral drone. A norm-freeze bounds it without weight decay — the two are alternatives, and `weight_decay` is **inert** when hyperball is on. |
+| **`autoscale`** | Scales the finalized spectral update by its own signal-to-noise ratio | Removes a hand-tuned LR multiplier on the spectral path. |
+| **`snr_gate`** | Row/tensor-wise SNR gate on the update | Same family as autoscale; gates rather than scales. |
+| **`apply_cautious`** | Masks update elements that disagree in sign with the gradient | Cautious-optimizer style; cheap variance reduction. |
+
+**Weight decay is a GROUP property, not an optimizer flag.** `build_fusion_param_groups`
+takes `spectral_wd` (default 0.01) and `scalar_wd` (default 0.0) and sets each group's
+`weight_decay`; the optimizer just consumes it. Look in `groups.py`, not `optimizer.py`,
+when tuning it.
+
 ---
 
 ## How it works (one screen)

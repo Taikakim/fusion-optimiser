@@ -11,12 +11,23 @@ Bifurcated routing:
 
 Shared Polyak step size γ_t = γ_base · clamp(loss_ema / gnorm_ema, 0.1, 10).
 
+Also: cautious updates (sign-agreement masking), the autoscale/SNR gate on the
+finalized spectral update, hyperball norm-freeze, and decay schedules for the
+Polyak step size.
+
 Plus TimeConditioningCache for inference acceleration on adaLN-zero models.
 
 See README.md for the recipe, the empirical case study, and porting notes.
 """
 
-from .optimizer import FusionOpt, newton_schulz_5, newton_schulz_5_fp16_safe
+from .optimizer import (
+    FusionOpt,
+    newton_schulz_5,
+    newton_schulz_5_fp16_safe,
+    apply_cautious,
+    decay_factor,
+    snr_gate,
+)
 from .groups import build_fusion_param_groups, summarise_groups
 from .time_cache import TimeConditioningCache, get_or_build_cache, clear_cache_registry
 
