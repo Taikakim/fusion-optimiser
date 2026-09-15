@@ -37,6 +37,39 @@ use the `force_scalar` regex list:
 build_fusion_param_groups(model, force_scalar=[r"output_proj"])
 ```
 
+## Damping — when the spectral path won't stop wandering
+
+NS5 + NorMuon are magnitude-blind (every update gets normalised to unit
+spectral norm / unit-RMS rows), so on a flat loss landscape — a fine-tune
+near a good base, or a small effective batch — the walk continues at full
+speed forever instead of settling. Two independent brakes, combinable:
+
+| Mechanism | Use when | Knob |
+|---|---|---|
+| `decay_schedule` | You know roughly how long the run is (`total_steps`) and want a predictable envelope | `cosine`/`linear` for a smooth taper, `wsd` to stay at full strength until `decay_start_frac` then decay — good for "train hard, then settle" schedules |
+| `snr` component | You want a **data-driven** brake that reacts to whatever the gradient is actually doing, no `total_steps` needed | `snr_source="grad"` (leave at default — see below), tune `snr_beta`/`snr_floor` |
+
+**`snr_source` must stay `"grad"`.** Gating on the finalized update
+(`snr_source=None`, measuring `U` itself) reads momentum's own smoothing as
+"signal" — after NS5/NorMuon, a post-momentum update's row-consistency at
+`beta≈0.9` is close to 1 by construction, so the gate stays open regardless
+of whether the underlying gradient is noise. Gating on the raw gradient is
+the version that actually engages the brake.
+
+## Hyperball with zero-init adapters
+
+If you train **hyperball** on a LoRA/DoRA or other zero-init adapter, check
+that the optimizer's stderr does NOT report `hyperball DISABLED for a
+zero-init param`. If it does for params you expected to be constrained,
+your routing put an unexpectedly-zero-init tensor on the spectral path —
+worth investigating, since the whole point of hyperball there was the norm
+constraint. For LoRA/DoRA's `lora_B` and similar zero-init projections this
+message is *expected and correct*: hyperball would otherwise pin them at
+exactly zero for the entire run (a null result reported as if it were a
+real one), so the optimizer falls back to the ordinary update for those
+params instead. Hyperball's constraint is a full-fine-tune tool — it needs
+a real pretrained `W0` to freeze the norm of.
+
 ## Schedule-Free deployment
 
 Schedule-Free's whole trick is that you train with the fast iterate z_t

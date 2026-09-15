@@ -26,6 +26,17 @@ declaring success.
       numbers (on a fresh TunableOp cache, the first run is ~30 %
       slower).
 
+## If using `hyperball`
+
+- [ ] **Confirm the constrained params are NOT zero-init.** Hyperball
+      freezes each spectral matrix's Frobenius norm at ‖W₀‖_F; a zero-init
+      tensor (LoRA/DoRA's `lora_B`, a `zero_module()`'d projection) has
+      ‖W₀‖ = 0, which the optimizer detects and works around by falling
+      back to the ordinary update (logged on stderr) — but that means
+      hyperball wasn't actually constraining that param. If you *wanted*
+      the norm constraint there, hyperball is the wrong tool for a
+      zero-init adapter; it's a full-fine-tune mechanism.
+
 ## Recipe selection
 
 - [ ] **Default to `{"ns5", "normuon", "sf"}`** (SF-NorMuon). Test

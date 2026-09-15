@@ -937,10 +937,28 @@ class FusionOpt(Optimizer):
                 #   W       = R * W_tilde / (‖W_tilde‖ + eps)
                 if "hyperball_R" not in state:
                     state["hyperball_R"] = p.data.norm()
+                    # ZERO-INIT ESCAPE HATCH. R = ‖W0‖ = 0 makes both halves of the
+                    # update identically zero (−γ·R·û = 0, then R·W̃/‖W̃‖ = 0), pinning
+                    # the parameter at zero for the entire run. Every adapter we train is
+                    # zero-init by construction — LoRA/DoRA lora_B and the Head-B
+                    # cross-attn to_out — so hyperball on an adapter recipe trains
+                    # NOTHING and reports it as a weak result, not as an error. Fall back
+                    # to the unconstrained update for such params and say so.
+                    if float(state["hyperball_R"]) <= 1e-12:
+                        state["hyperball_off"] = True
+                        self._hyperball_skipped = getattr(self, "_hyperball_skipped", 0) + 1
+                        if self._hyperball_skipped <= 3 or self._hyperball_skipped % 100 == 0:
+                            print(f"[fusion] hyperball DISABLED for a zero-init param "
+                                  f"{tuple(p.shape)} (‖W0‖=0 would freeze it at zero); "
+                                  f"{self._hyperball_skipped} such params so far — it "
+                                  f"takes the ordinary update instead", flush=True)
                 R = state["hyperball_R"]
-                u_hat = U / (U.norm() + 1e-12)
-                W_tilde = p.data - gamma_t * R * u_hat.to(p.dtype)
-                p.data.copy_(R * W_tilde / (W_tilde.norm() + 1e-12))
+                if state.get("hyperball_off"):
+                    p.data.mul_(1 - gamma_t * wd).add_(U.to(p.dtype), alpha=-gamma_t)
+                else:
+                    u_hat = U / (U.norm() + 1e-12)
+                    W_tilde = p.data - gamma_t * R * u_hat.to(p.dtype)
+                    p.data.copy_(R * W_tilde / (W_tilde.norm() + 1e-12))
             else:
                 # No SF averaging: apply WD + step directly to live weights p
                 p.data.mul_(1 - gamma_t * wd).add_(U.to(p.dtype), alpha=-gamma_t)

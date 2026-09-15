@@ -88,16 +88,23 @@ Full citations in [`docs/references.md`](docs/references.md).
 
 ### Stabilisers added since the first release
 
-Four mechanisms landed after the initial packaging (2026-06-20) and are now
+Five mechanisms landed after the initial packaging (2026-06-20) and are now
 part of `optimizer.py`. All are **off by default** — the recipe above is
 unchanged without them.
 
 | Control | What it does | Why it exists |
 |---|---|---|
-| **`hyperball`** | Freezes each spectral matrix's Frobenius norm at ‖W₀‖_F, optimizer-side | Full-fine-tune latent-scale runaway: weights grow, the decoder is driven out of distribution, output degenerates into a spectral drone. A norm-freeze bounds it without weight decay — the two are alternatives, and `weight_decay` is **inert** when hyperball is on. |
-| **`autoscale`** | Scales the finalized spectral update by its own signal-to-noise ratio | Removes a hand-tuned LR multiplier on the spectral path. |
-| **`snr_gate`** | Row/tensor-wise SNR gate on the update | Same family as autoscale; gates rather than scales. |
-| **`apply_cautious`** | Masks update elements that disagree in sign with the gradient | Cautious-optimizer style; cheap variance reduction. |
+| **`hyperball`** | Freezes each spectral matrix's Frobenius norm at ‖W₀‖_F, optimizer-side | Full-fine-tune latent-scale runaway: weights grow, the decoder is driven out of distribution, output degenerates into a spectral drone. A norm-freeze bounds it without weight decay — the two are alternatives, and `weight_decay` is **inert** when hyperball is on. **Zero-init parameters are a special case:** LoRA/DoRA's `lora_B` (and any `zero_module()`'d projection) has ‖W₀‖ = 0, which would otherwise pin the parameter at exactly zero for the whole run — a broken instrument reporting a null result, not an error. The optimizer detects `‖W₀‖ ≈ 0` on the first step and falls back to the ordinary (unconstrained) update for that parameter, printing a warning; hyperball's constraint is unweakened everywhere it legitimately applies (real pretrained tensors). |
+| **`decay_schedule`** (`none`\|`cosine`\|`linear`\|`wsd`, + `total_steps`/`decay_min`/`decay_start_frac`) | In-optimizer LR decay over `total_steps`, multiplying γ_t | The spectral path is magnitude-blind by construction — NS5 sets every singular value of the update to 1 and NorMuon then makes every output row unit-RMS — so once the gradient turns to noise (small effective batch, fine-tuning near a good base) the walk continues at full speed forever. Schedule-Free's premise ("the average IS the decay") holds inside a basin, not on a flat landscape, and weight decay's time constant at typical LR is far longer than any real run. A decay schedule is the one mechanism that stops the wandering by construction. |
+| **`snr`** component | Gates the *finalized spectral update* per row (or per element) by its own bias-corrected signal-to-noise ratio (`snr_mode`/`snr_beta`/`snr_floor`/`snr_power`) | Re-introduces the one thing NS5 + NorMuon strip: whether a step is repeatable. **Must be measured on the raw gradient** (`snr_source="grad"`, the default) — gating on the post-momentum update reads momentum's own smoothing as "signal" and the gate never closes; `snr_source="grad"` replaced an earlier `"update"` default after this was confirmed empirically. |
+| **`autoscale`** | Global, model-wide D-Adaptation (Defazio & Mishchenko, Prodigy-style) step-size multiplier, folded into γ_t alongside the Polyak ratio | Removes a hand-tuned LR multiplier: `d` starts at `autoscale_d0` and only ever grows, driven by how much the observed gradient correlates with displacement from init — a provable lower bound on the optimal step size. Cheaper than `prodigyopt.Prodigy` because state (`p0`, `s`) is kept at every `autoscale_slice_p`-th coordinate rather than full-size. |
+| **`apply_cautious`** (`cautious` component) | Masks update elements that disagree in sign with the gradient, rescales survivors to preserve the **update norm** (not mean magnitude) | Cautious-optimizer style variance reduction. Norm-preserving specifically because a naive `1/keep_frac` rescale inflated effective LR by ~37 % at the near-random masks NS5-orthogonalized updates produce, and NaN'd a DoRA r128 full-fusion run between epoch 2 and 3 while the otherwise-identical baseline trained clean. |
+
+`decay_schedule` and `snr` are what the code calls **damping**: two independent
+brakes on the same magnitude-blind-walk problem — one scheduled, one
+data-driven — both off by default (byte-identical without them), and
+combinable (the schedule sets an overall envelope, the gate reacts per-row to
+what the gradient is actually doing).
 
 **Weight decay is a GROUP property, not an optimizer flag.** `build_fusion_param_groups`
 takes `spectral_wd` (default 0.01) and `scalar_wd` (default 0.0) and sets each group's
